@@ -128,3 +128,49 @@ class SchedulerTest(unittest.TestCase):
             "spec.template.spec.tolerations[0].key",
             docs[0],
         )
+
+    def test_livenessprobe_values_are_configurable(self):
+        docs = render_chart(
+            values={
+                "scheduler": {
+                    "livenessProbe": {
+                        "initialDelaySeconds": 111,
+                        "timeoutSeconds": 222,
+                        "failureThreshold": 333,
+                        "periodSeconds": 444,
+                    }
+                },
+            },
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        assert 111 == jmespath.search(
+            "spec.template.spec.containers[0].livenessProbe.initialDelaySeconds", docs[0]
+        )
+        assert 222 == jmespath.search(
+            "spec.template.spec.containers[0].livenessProbe.timeoutSeconds", docs[0]
+        )
+        assert 333 == jmespath.search(
+            "spec.template.spec.containers[0].livenessProbe.failureThreshold", docs[0]
+        )
+        assert 444 == jmespath.search("spec.template.spec.containers[0].livenessProbe.periodSeconds", docs[0])
+
+    @parameterized.expand(
+        [
+            ({"enabled": False}, {"emptyDir": {}}),
+            ({"enabled": True}, {"persistentVolumeClaim": {"claimName": "RELEASE-NAME-logs"}}),
+            (
+                {"enabled": True, "existingClaim": "test-claim"},
+                {"persistentVolumeClaim": {"claimName": "test-claim"}},
+            ),
+        ]
+    )
+    def test_logs_persistence_changes_volume(self, log_persistence_values, expected_volume):
+        docs = render_chart(
+            values={"logs": {"persistence": log_persistence_values}},
+            show_only=["templates/scheduler/scheduler-deployment.yaml"],
+        )
+
+        assert {"name": "logs", **expected_volume} == jmespath.search(
+            "spec.template.spec.volumes[1]", docs[0]
+        )

@@ -273,7 +273,12 @@ class TestConnectionModelView(TestBase):
 class TestVariableModelView(TestBase):
     def setUp(self):
         super().setUp()
-        self.variable = {'key': 'test_key', 'val': 'text_val', 'is_encrypted': True}
+        self.variable = {
+            'key': 'test_key',
+            'val': 'text_val',
+            'description': 'test_description',
+            'is_encrypted': True,
+        }
 
     def tearDown(self):
         self.clear_table(models.Variable)
@@ -338,6 +343,13 @@ class TestVariableModelView(TestBase):
             '/variable/varimport', data={'file': (bytes_content, 'test.json')}, follow_redirects=True
         )
         self.check_content_in_response('4 variable(s) successfully updated.', resp)
+
+    def test_description_retrieval(self):
+        # create valid variable
+        self.client.post('/variable/add', data=self.variable, follow_redirects=True)
+
+        row = self.session.query(models.Variable.key, models.Variable.description).first()
+        assert row.key == 'test_key' and row.description == 'test_description'
 
 
 class PluginOperator(BaseOperator):
@@ -982,10 +994,10 @@ class TestAirflowBaseViews(TestBase):
         resp = self.client.get(url, follow_redirects=True)
         self.check_content_in_response('DAG Details', resp)
 
-    @parameterized.expand(["graph", "tree", "dag_details"])
+    @parameterized.expand(["graph", "tree", "calendar", "dag_details"])
     def test_view_uses_existing_dagbag(self, endpoint):
         """
-        Test that Graph, Tree & Dag Details View uses the DagBag already created in views.py
+        Test that Graph, Tree, Calendar & Dag Details View uses the DagBag already created in views.py
         instead of creating a new one.
         """
         url = f'{endpoint}?dag_id=example_bash_operator'
@@ -1087,6 +1099,14 @@ class TestAirflowBaseViews(TestBase):
         url = 'tree?dag_id=example_subdag_operator.section-1'
         resp = self.client.get(url, follow_redirects=True)
         self.check_content_in_response('section-1-task-1', resp)
+
+    def test_calendar(self):
+        url = 'calendar?dag_id=example_bash_operator'
+        resp = self.client.get(url, follow_redirects=True)
+        dag_run_date = self.bash_dagrun.execution_date.date().isoformat()
+        expected_data = [{'date': dag_run_date, 'state': State.RUNNING, 'count': 1}]
+        expected_data_json_escaped = json.dumps(expected_data).replace('"', '\\"').replace(' ', '')
+        self.check_content_in_response(expected_data_json_escaped, resp)
 
     def test_duration(self):
         url = 'duration?days=30&dag_id=example_bash_operator'
